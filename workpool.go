@@ -21,14 +21,26 @@ type Result struct {
 	Err   error
 }
 
+func SuccessResult(value interface{}) *Result {
+	return &Result{Value: value}
+}
+
+func ErrorResult(err error) *Result {
+	return &Result{Err: err}
+}
+
 // Future is a container for the results of an async task that may or may not have completed yet
 type Future interface {
-	// Get waits for the completion of the async task for the given amount of time.
+	// GetWithTimeout waits for the completion of the async task for the given amount of time.
 	// If the task completes within the timeout, result of the task is returned. Otherwise, ErrFutureTimeout
 	// is returned as the error. Get can be called as many times as needed until the task completes.
 	// When a call to Get has returned the results of the completed task, subsequent calls to Get will
 	// return ErrFutureCompleted as an error.
-	Get(timeout time.Duration) (interface{}, error)
+	GetWithTimeout(timeout time.Duration) (interface{}, error)
+
+	// GetWithContext waits for the completion of the async task until the context times out or is cancelled.
+	// The behaviour when this function is called multiple times is identical to GetWithTimeout.
+	GetWithContext(ctx context.Context) (interface{}, error)
 
 	// Cancel attempts to cancel the async task. This is a best efforts attempt to perform the cancellation.
 	// If the task is still in the queue, its' context will be cancelled, causing the WorkPool to reject the
@@ -42,7 +54,7 @@ type resultHolder struct {
 	resultChan chan *Result
 }
 
-func (rh *resultHolder) Get(timeout time.Duration) (interface{}, error) {
+func (rh *resultHolder) GetWithTimeout(timeout time.Duration) (interface{}, error) {
 	select {
 	case r, ok := <-rh.resultChan:
 		if ok {
@@ -52,6 +64,20 @@ func (rh *resultHolder) Get(timeout time.Duration) (interface{}, error) {
 			return nil, ErrFutureCompleted
 		}
 	case <-time.After(timeout):
+		return nil, ErrFutureTimeout
+	}
+}
+
+func (rh *resultHolder) GetWithContext(ctx context.Context) (interface{}, error) {
+	select {
+	case r, ok := <-rh.resultChan:
+		if ok {
+			rh.cancelFunc()
+			return r.Value, r.Err
+		} else {
+			return nil, ErrFutureCompleted
+		}
+	case <-ctx.Done():
 		return nil, ErrFutureTimeout
 	}
 }
@@ -76,9 +102,9 @@ type WorkPool struct {
 	tokens   chan struct{}
 }
 
-// NewWorkPool creates a new work pool that will execute at most maxGoRoutines concurrently and hold queueSize
+// New creates a new work pool that will execute at most maxGoRoutines concurrently and hold queueSize
 // tasks in the backlog awaiting an execution slot.
-func NewWorkPool(maxGoRoutines, queueSize int) *WorkPool {
+func New(maxGoRoutines, queueSize int) *WorkPool {
 	wp := &WorkPool{
 		queue:  make(chan *taskWrapper, queueSize+maxGoRoutines),
 		tokens: make(chan struct{}, queueSize+maxGoRoutines),

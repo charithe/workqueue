@@ -10,7 +10,7 @@ import (
 )
 
 func ExampleWorkPool_Submit() {
-	wp := NewWorkPool(8, 16)
+	wp := New(8, 16)
 	defer wp.Shutdown(true)
 
 	// When the task reaches the front of the queue, the associated context will be used to determine whether
@@ -21,8 +21,8 @@ func ExampleWorkPool_Submit() {
 
 	f, err := wp.Submit(ctx, func(c context.Context) *Result {
 		// do work
-		// in case of error, return &Result{Err: err} instead
-		return &Result{Value: "result"}
+		// in case of error, return ErrorResult(err) instead
+		return SuccessResult("result")
 	})
 
 	// If the number of queued tasks exceed the limit, ErrPoolFull will be returned
@@ -32,7 +32,7 @@ func ExampleWorkPool_Submit() {
 	}
 
 	// Wait for the task to complete for 10 seconds
-	v, err := f.Get(10 * time.Second)
+	v, err := f.GetWithTimeout(10 * time.Second)
 	if err != nil {
 		if err == ErrFutureTimeout {
 			fmt.Println("Timed out waiting for result")
@@ -58,26 +58,26 @@ func TestTaskExecution(t *testing.T) {
 			desc:        "Successful task execution",
 			ctxTimeout:  5 * time.Millisecond,
 			getTimeout:  5 * time.Millisecond,
-			task:        func(ctx context.Context) *Result { return &Result{Value: "value"} },
+			task:        func(ctx context.Context) *Result { return SuccessResult("value") },
 			expectedVal: "value",
-		},
-		{
-			desc:        "Future Get timeout",
-			ctxTimeout:  5 * time.Millisecond,
-			getTimeout:  5 * time.Millisecond,
-			task:        func(ctx context.Context) *Result { time.Sleep(10 * time.Millisecond); return &Result{Value: "value"} },
-			expectedErr: ErrFutureTimeout,
 		},
 		{
 			desc:        "Context timeout",
 			ctxTimeout:  0 * time.Millisecond,
 			getTimeout:  5 * time.Millisecond,
-			task:        func(ctx context.Context) *Result { return &Result{Value: "value"} },
+			task:        func(ctx context.Context) *Result { return SuccessResult("value") },
 			expectedErr: context.DeadlineExceeded,
+		},
+		{
+			desc:        "Future GetWithTimeout",
+			ctxTimeout:  5 * time.Millisecond,
+			getTimeout:  5 * time.Millisecond,
+			task:        func(ctx context.Context) *Result { time.Sleep(10 * time.Millisecond); return SuccessResult("value") },
+			expectedErr: ErrFutureTimeout,
 		},
 	}
 
-	wp := NewWorkPool(2, 2)
+	wp := New(2, 2)
 	defer wp.Shutdown(true)
 
 	for _, tc := range testCases {
@@ -89,7 +89,7 @@ func TestTaskExecution(t *testing.T) {
 			assert.NoError(t, err)
 			assert.NotNil(t, f)
 
-			val, err := f.Get(tc.ctxTimeout)
+			val, err := f.GetWithTimeout(tc.ctxTimeout)
 			if tc.expectedErr != nil {
 				assert.Error(t, err)
 				assert.EqualError(t, err, tc.expectedErr.Error())
@@ -102,92 +102,92 @@ func TestTaskExecution(t *testing.T) {
 }
 
 func TestFutureReuse(t *testing.T) {
-	wp := NewWorkPool(1, 1)
+	wp := New(1, 1)
 	defer wp.Shutdown(true)
 
-	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { return &Result{Value: "value"} })
+	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { return SuccessResult("value") })
 	assert.NoError(t, err)
 
-	v1, err := f1.Get(1 * time.Second)
+	v1, err := f1.GetWithTimeout(1 * time.Second)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "value", v1)
 
-	v1, err = f1.Get(1 * time.Second)
+	v1, err = f1.GetWithTimeout(1 * time.Second)
 	assert.Error(t, err)
 	assert.EqualError(t, err, ErrFutureCompleted.Error())
 }
 
 func TestFutureCancellation(t *testing.T) {
-	wp := NewWorkPool(1, 1)
+	wp := New(1, 1)
 	defer wp.Shutdown(true)
 
-	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return &Result{Value: "value1"} })
+	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return SuccessResult("value1") })
 	assert.NoError(t, err)
 
-	f2, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return &Result{Value: "value2"} })
+	f2, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return SuccessResult("value2") })
 	assert.NoError(t, err)
 
 	f2.Cancel()
 
-	v1, err := f1.Get(1 * time.Second)
+	v1, err := f1.GetWithTimeout(1 * time.Second)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "value1", v1)
 
-	_, err = f2.Get(1 * time.Second)
+	_, err = f2.GetWithTimeout(1 * time.Second)
 	assert.Error(t, err)
 	assert.EqualError(t, err, context.Canceled.Error())
 }
 
 func TestWorkPoolSizeConstraints(t *testing.T) {
-	wp := NewWorkPool(1, 1)
+	wp := New(1, 1)
 	defer wp.Shutdown(true)
 
-	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return &Result{Value: "value1"} })
+	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return SuccessResult("value1") })
 	assert.NoError(t, err)
 
-	f2, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return &Result{Value: "value2"} })
+	f2, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return SuccessResult("value2") })
 	assert.NoError(t, err)
 
-	_, err = wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return &Result{Value: "value3"} })
+	_, err = wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(20 * time.Millisecond); return SuccessResult("value3") })
 	assert.Error(t, err)
 	assert.EqualError(t, err, ErrPoolFull.Error())
 
-	v1, err := f1.Get(1 * time.Second)
+	v1, err := f1.GetWithTimeout(1 * time.Second)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "value1", v1)
 
-	v2, err := f2.Get(1 * time.Second)
+	v2, err := f2.GetWithTimeout(1 * time.Second)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "value2", v2)
 
-	f3, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return &Result{Value: "value3"} })
+	f3, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return SuccessResult("value3") })
 	assert.NoError(t, err)
 
-	v3, err := f3.Get(1 * time.Second)
+	v3, err := f3.GetWithTimeout(1 * time.Second)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "value3", v3)
 }
 
 func TestWorkPoolShutdown(t *testing.T) {
-	wp := NewWorkPool(1, 2)
+	wp := New(1, 2)
 
-	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return &Result{Value: "value1"} })
+	f1, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return SuccessResult("value1") })
 	assert.NoError(t, err)
 
-	f2, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return &Result{Value: "value2"} })
+	f2, err := wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return SuccessResult("value2") })
 	assert.NoError(t, err)
 
 	wp.Shutdown(true)
 
-	_, err = wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return &Result{Value: "value3"} })
+	_, err = wp.Submit(context.Background(), func(c context.Context) *Result { time.Sleep(10 * time.Millisecond); return SuccessResult("value3") })
 	assert.Error(t, err)
 	assert.EqualError(t, err, ErrPoolShutdown.Error())
 
-	v1, err := f1.Get(1 * time.Second)
+	v1, err := f1.GetWithTimeout(1 * time.Second)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "value1", v1)
 
-	v2, err := f2.Get(1 * time.Second)
+	v2, err := f2.GetWithTimeout(1 * time.Second)
 	assert.NoError(t, err)
 	assert.EqualValues(t, "value2", v2)
 }

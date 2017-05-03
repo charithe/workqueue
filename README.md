@@ -16,7 +16,7 @@ Usage
 -----
 
 ```go
-wp := NewWorkPool(8, 16)
+wp := workpool.New(8, 16)
 defer wp.Shutdown(true)
 
 // When the task reaches the front of the queue, the associated context will be used to determine whether
@@ -25,22 +25,22 @@ defer wp.Shutdown(true)
 ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
 defer cancelFunc()
 
-f, err := wp.Submit(ctx, func(c context.Context) *Result {
+f, err := wp.Submit(ctx, func(c context.Context) *workpool.Result {
     // do work
-    // in case of error, return &Result{Err: err} instead
-    return &Result{Value: "result"}
+    // in case of error, return workpool.ErrorResult(err) instead
+    return workpool.SuccessResult("result")
 })
 
 // If the number of queued tasks exceed the limit, ErrPoolFull will be returned
-if err == ErrPoolFull {
+if err == workpool.ErrPoolFull {
     fmt.Println("Pool queue is full")
     return
 }
 
 // Wait for the task to complete for 10 seconds
-v, err := f.Get(10 * time.Second)
+v, err := f.GetWithTimeout(10 * time.Second)
 if err != nil {
-    if err == ErrFutureTimeout {
+    if err == workpool.ErrFutureTimeout {
         fmt.Println("Timed out waiting for result")
     } else {
         fmt.Printf("Task failed: %+v\n", err)
