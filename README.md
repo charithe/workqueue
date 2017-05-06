@@ -32,8 +32,8 @@ f, err := wq.Submit(ctx, func(c context.Context) *workqueue.Result {
     return workqueue.SuccessResult("result")
 })
 
-// If the number of queued tasks exceed the limit, ErrPoolFull will be returned
-if err == workqueue.ErrPoolFull {
+// If the number of queued tasks exceed the limit, ErrQueueFull will be returned
+if err == workqueue.ErrQueueFull {
     fmt.Println("Pool queue is full")
     return
 }
