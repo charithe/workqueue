@@ -1,23 +1,24 @@
-WorkPool
+WorkQueue
 ========
 
-[![GoDoc](https://godoc.org/github.com/charithe/workpool?status.svg)](https://godoc.org/github.com/charithe/workpool)
+[![GoDoc](https://godoc.org/github.com/charithe/workqueue?status.svg)](https://godoc.org/github.com/charithe/workqueue)
 
 A Go library for queuing and  executing a set of tasks with a user-defined concurrency level. Includes support 
 for timing out and/or cancelling the tasks in the queue. 
+
 Provides a primitive `Future`-like abstraction for obtaining the results of a task.
 
 
 ```
-go get github.com/charithe/workpool
+go get github.com/charithe/workqueue
 ```
 
 Usage
 -----
 
 ```go
-wp := workpool.New(8, 16)
-defer wp.Shutdown(true)
+wq := workqueue.New(8, 16)
+defer wq.Shutdown(true)
 
 // When the task reaches the front of the queue, the associated context will be used to determine whether
 // the task should be executed or not. If the context hasn't been cancelled, the task will be started and
@@ -25,14 +26,14 @@ defer wp.Shutdown(true)
 ctx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
 defer cancelFunc()
 
-f, err := wp.Submit(ctx, func(c context.Context) *workpool.Result {
+f, err := wq.Submit(ctx, func(c context.Context) *workqueue.Result {
     // do work
-    // in case of error, return workpool.ErrorResult(err) instead
-    return workpool.SuccessResult("result")
+    // in case of error, return workqueue.ErrorResult(err) instead
+    return workqueue.SuccessResult("result")
 })
 
 // If the number of queued tasks exceed the limit, ErrPoolFull will be returned
-if err == workpool.ErrPoolFull {
+if err == workqueue.ErrPoolFull {
     fmt.Println("Pool queue is full")
     return
 }
@@ -40,7 +41,7 @@ if err == workpool.ErrPoolFull {
 // Wait for the task to complete for 10 seconds
 v, err := f.GetWithTimeout(10 * time.Second)
 if err != nil {
-    if err == workpool.ErrFutureTimeout {
+    if err == workqueue.ErrFutureTimeout {
         fmt.Println("Timed out waiting for result")
     } else {
         fmt.Printf("Task failed: %+v\n", err)
