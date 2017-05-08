@@ -49,6 +49,26 @@ type Future interface {
 	Cancel()
 }
 
+type ImmediateFuture struct {
+	Val interface{}
+	Err error
+}
+
+// NewImmediateFuture is a Future that returns immeidately
+func NewImmediateFuture(val interface{}, err error) *ImmediateFuture {
+	return &ImmediateFuture{Val: val, Err: err}
+}
+
+func (f *ImmediateFuture) GetWithTimeout(timeout time.Duration) (interface{}, error) {
+	return f.Val, f.Err
+}
+
+func (f *ImmediateFuture) GetWithContext(ctx context.Context) (interface{}, error) {
+	return f.Val, f.Err
+}
+
+func (f *ImmediateFuture) Cancel() {}
+
 type resultHolder struct {
 	cancelFunc context.CancelFunc
 	resultChan chan *Result
